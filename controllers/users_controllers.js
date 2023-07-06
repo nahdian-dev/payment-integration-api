@@ -1,4 +1,9 @@
 // @desc
 // @route
 // @access
-exports.userLogin = (res, res) => { };
+exports.userRegister = (req, res) => { };
+
+// @desc
+// @route
+// @access
+exports.userLogin = (req, res) => { };
