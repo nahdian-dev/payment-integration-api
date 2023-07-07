@@ -1,7 +1,7 @@
 const statusCodeConstant = require('../constants/error_statuscode_constant');
 
-exports.errorHandlingMiddleware = function (err, res, req, next) {
-    const statusCode = statusCodeConstant || 400;
+exports.errorHandlingMiddleware = function (err, req, res, next) {
+    const statusCode = statusCodeConstant.errorStatuscodeConstant || 400;
 
     switch (statusCode) {
         case statusCode.BAD_REQUEST:
