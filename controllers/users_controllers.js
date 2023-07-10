@@ -22,9 +22,8 @@ exports.userRegister = (req, res) => {
         throw new Error(`Error when validate body: ${error}`);
     }
 
-    // ==== CEK EMAIL IS ALREADY EXISTS ====
+    // ==== INSTANCE DB ====
     const createConnection = connection.createConnection();
-    const sqlCheckEmail = `SELECT email FROM users WHERE email = '${value.email}'`;
 
     // ==== SEND EMAIL VERIFICATION CODE ====
     function sendEmailVerification(email, verificationCode) {
@@ -65,8 +64,10 @@ exports.userRegister = (req, res) => {
         };
     };
 
-    function checkEmailResult(result) {
-        if (result === 1) {
+    // ==== POST TO DB ====
+    function postDataToDB(emailAvailability) {
+        // IS AVAILABLE
+        if (emailAvailability === 1) {
             const sqlGetIsVerified = `SELECT isVerified FROM users WHERE email = '${value.email}'`;
 
             createConnection.query(sqlGetIsVerified, (error, results, fields) => {
@@ -80,6 +81,8 @@ exports.userRegister = (req, res) => {
                 const verificationCode = generateLength.toString().padStart(4, '0');
 
                 if (isVerified === 0) {
+                    sendEmailVerification(value.email, verificationCode);
+
                     const sqlUpdateVerificationCode = `UPDATE users SET verificationCode = ${verificationCode} WHERE email = '${value.email}'`;
 
                     createConnection.query(sqlUpdateVerificationCode, (error) => {
@@ -89,6 +92,7 @@ exports.userRegister = (req, res) => {
 
                         res.status(200).json({
                             message: 'Update verification code!',
+                            verificationCode: verificationCode,
                             accepted: value.email
                         });
                     });
@@ -100,11 +104,13 @@ exports.userRegister = (req, res) => {
             });
         };
 
-        if (result > 1) {
+        // IS DUPLICATED
+        if (emailAvailability > 1) {
             res.status(400).send('Email is duplicate!');
         };
 
-        if (result === 0) {
+        // IS NOT AVAILABLE
+        if (emailAvailability === 0) {
             const generateLength = Math.floor(Math.random() * 10000);
             const verificationCode = generateLength.toString().padStart(4, '0');
 
@@ -122,7 +128,8 @@ exports.userRegister = (req, res) => {
                 };
 
                 res.status(200).json({
-                    message: 'Register success!',
+                    message: 'Register success, please verify the code was sent to your email!',
+                    verificationCode: verificationCode,
                     accepted: value.email
                 });
             });
@@ -131,22 +138,68 @@ exports.userRegister = (req, res) => {
         };
     }
 
-    createConnection.query(sqlCheckEmail, (error, result, query) => {
-        if (error) throw new Error('Failed to check email already exists!');
+    const sqlCheckEmail = `SELECT email FROM users WHERE email = '${value.email}'`;
 
-        const rowDataPacket = Object.entries(result).length;
-        checkEmailResult(rowDataPacket);
+    createConnection.query(sqlCheckEmail, (error, result, query) => {
+        if (error) throw new Error('Failed to check email!');
+
+        const emailAvailability = Object.entries(result).length;
+        postDataToDB(emailAvailability);
     });
 };
 
 // @desc Verification Email
 // @route POST - /users/register/email-verification
 // @access public
-exports.registerEmailVerification = (req, res) => {
+exports.emailVerification = (req, res) => {
+    const requestSent = req.body;
+    const createConnection = connection.createConnection();
 
+    // ==== GET VERIFICATION CODE ====
+    const sqlGetVerificationCode = `SELECT verificationCode FROM users WHERE email = '${requestSent.email}'`;
 
+    createConnection.query(sqlGetVerificationCode, (error, results, fields) => {
+        if (error) {
+            res.send(error);
+        }
+
+        const verificationCode = results[0].verificationCode;
+
+        // ==== COMPARE VERIFICATION CODE ====
+        const sqlGetIsVerified = `SELECT isVerified FROM users WHERE email = '${requestSent.email}'`;
+
+        createConnection.query(sqlGetIsVerified, (error, results, fields) => {
+            const isVerified = results[0].isVerified;
+
+            // NOT VERIFIED
+            if (isVerified === 0) {
+                if (verificationCode === requestSent.verificationCode) {
+                    const sqlUpdateIsVerified = `UPDATE users SET isVerified = '1' WHERE email = '${requestSent.email}'`;
+
+                    createConnection.query(sqlUpdateIsVerified, (error) => {
+                        if (error) {
+                            res.send(error);
+                        }
+
+                        res.status(200).json({
+                            message: 'Verication Success!'
+                        });
+                    });
+                }
+
+                if (verificationCode !== requestSent.verificationCode) {
+                    res.status(400).send('Failed to verify account, verification code was different!');
+                }
+            }
+
+            // IS VERIFIED
+            if (isVerified === 1) {
+                res.status(400).send('Failed to verify account, account has been verified!');
+            }
+        });
+
+    });
 };
-
 
 // @desc
 // @route
