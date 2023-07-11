@@ -1,6 +1,8 @@
 const Joi = require('joi');
 const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
 const connection = require('../connections/mysql_connection');
 
 // @desc Account Register
@@ -169,6 +171,10 @@ exports.emailVerification = (req, res) => {
         const sqlGetIsVerified = `SELECT isVerified FROM users WHERE email = '${requestSent.email}'`;
 
         createConnection.query(sqlGetIsVerified, (error, results, fields) => {
+            if (error) {
+                res.send(error);
+            }
+
             const isVerified = results[0].isVerified;
 
             // NOT VERIFIED
@@ -182,7 +188,7 @@ exports.emailVerification = (req, res) => {
                         }
 
                         res.status(200).json({
-                            message: 'Verication Success!'
+                            message: 'Verification Success!'
                         });
                     });
                 }
@@ -201,7 +207,82 @@ exports.emailVerification = (req, res) => {
     });
 };
 
-// @desc
-// @route
-// @access
-exports.userLogin = (req, res) => { };
+// @desc Login Account
+// @route GET - /users/login
+// @access public
+exports.userLogin = (req, res) => {
+    // ==== VALIDATE BODY ====
+    const validateReqBody = Joi.object({
+        email: Joi.string().email().required(),
+        password: Joi.string().required(),
+    });
+
+    const { error, value } = validateReqBody.validate(req.body);
+
+    if (error) {
+        res.status(400);
+        throw new Error(`Error when validate body: ${error}`);
+    }
+
+    // ==== INSTANCE DB ====
+    const createConnection = connection.createConnection();
+
+    // ==== GET DATA FROM DB ====
+    const sqlGetEmailAndPass = `SELECT email, password, isVerified FROM users WHERE email = '${value.email}'`;
+
+    createConnection.query(sqlGetEmailAndPass, (error, results, fields) => {
+        if (error) {
+            res.status(400).send('Failed to login!');
+        }
+
+        const emailAvailability = Object.entries(results).length;
+
+        if (emailAvailability === 0) {
+            res.status(403).send('Unregistered Email!');
+        }
+
+        if (emailAvailability === 1) {
+            const resultEmail = results[0].email;
+            const resultPassword = results[0].password;
+            const resultIsVerified = results[0].isVerified;
+
+            if (resultIsVerified === 0) {
+                res.status(403).send('Email has not been verify, please verify account!');
+            }
+
+            if (resultIsVerified === 1) {
+                bcrypt.compare(value.password, resultPassword, (err, result) => {
+                    if (err) {
+                        console.error(err);
+                    }
+
+                    if (!result) {
+                        res.status(400).send(`Password do not match!`);
+                    }
+
+                    if (result) {
+                        const payload = {
+                            email: value.email
+                        };
+
+                        const token = jwt.sign(payload, process.env.JWT_SECRET_KEY, { expiresIn: '1h' });
+
+                        jwt.verify(token, process.env.JWT_SECRET_KEY, (err, decode) => {
+                            if (err) {
+                                console.error(err);
+                            }
+
+                            res.status(200).json({
+                                message: 'Login succesfully!',
+                                email: value.email,
+                                expiredIn: decode.exp,
+                                token: token
+                            });
+                        });
+                    }
+                });
+            }
+        }
+    });
+
+};
