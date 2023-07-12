@@ -35,16 +35,33 @@ exports.addCreditCard = (req, res) => {
     const createConnection = connection.createConnection();
 
     // ==== ADD CREDIT CARD ====
-    const sqlPostCard = `INSERT INTO cards(card_number,owner, expired, security_code) values('${value.card_number}','${value.owner}','${value.expired}','${value.security_code}')`;
+    const sqlCheckExistingCard = `SELECT card_id FROM cards WHERE card_number = '${value.card_number}'`;
 
-    createConnection.query(sqlPostCard, (error) => {
-        if (error) {
-            console.error(error);
-            res.status(400).send('Error when post credit cards!');
+    function postCard(existingCard) {
+        if (existingCard >= 1) {
+            res.status(400).send('Card is already exists!');
         }
 
-        res.status(200).send('Upload success!');
+        if (existingCard === 0) {
+            const sqlPostCard = `INSERT INTO cards(card_number,owner, expired, security_code) values('${value.card_number}','${value.owner}','${value.expired}','${value.security_code}')`;
+            createConnection.query(sqlPostCard, (errorPost) => {
+                if (errorPost) {
+                    console.error(errorPost);
+                    res.status(400).send('Error when post credit cards!');
+                }
+            });
+            res.status(200).send('Upload success!');
+        }
+    }
 
+    createConnection.query(sqlCheckExistingCard, (error, results, fields) => {
+        if (error) {
+            console.error(error);
+            res.status(400).send('Error when get existing card!');
+        }
+
+        const existingCard = Object.entries(results).length;
+
+        postCard(existingCard);
     });
-
 };
